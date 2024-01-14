@@ -23,7 +23,28 @@ int accept_connection(int server_fd);
 void handle_connection(int fd);
 void update_max_fd(int *max_fd, int fd);
 void receive_msg(t_client *client, int fd);
-int str_len(char *str);
+int get_nl_index(char *str);
+char *str_cut(char **buff, int idx);
+
+char *str_join(char *buf, char *add)
+{
+	char	*newbuf;
+	int		len;
+
+	if (buf == 0)
+		len = 0;
+	else
+		len = strlen(buf);
+	newbuf = malloc(sizeof(*newbuf) * (len + strlen(add) + 1));
+	if (newbuf == 0)
+		return (0);
+	newbuf[0] = 0;
+	if (buf != 0)
+		strcat(newbuf, buf);
+	free(buf);
+	strcat(newbuf, add);
+	return (newbuf);
+}
 
 int main(int argc, char **argv)
 {
@@ -33,6 +54,8 @@ int main(int argc, char **argv)
 	int id = 0;
 	int max_fd = 0;
 	char *msg_send = 0;
+	int nl_idx;
+	char *msg_buff = 0;
 
 	if (argc != 2)
 		print_error("Wrong number of arguments\n");
@@ -52,6 +75,14 @@ int main(int argc, char **argv)
 		if (select(max_fd+1, &r_sockets, &w_sockets, NULL, NULL) < 0)
 			print_error("Fatal error\n");
 		
+
+		// aqui precisa de fazer update do msg_out.
+		if (msg_buff)
+		{
+			printf("->%s", msg_buff);
+			msg_buff = 0;
+		}
+
 		for (int i=0; i < max_fd+1; i++)
 		{
 			if (FD_ISSET(i, &r_sockets))
@@ -66,9 +97,13 @@ int main(int argc, char **argv)
 				}
 				else
 				{
-					//handle_connection(i);
-					//receive_msg(&clients[i], i);
-					printf("msg: %s\n", clients[i].msg_in);
+					receive_msg(&clients[i], i);
+					nl_idx = get_nl_index(clients[i].msg_in);
+					while (nl_idx > -1)
+					{
+						msg_buff = str_join(msg_buff, str_cut(&(clients[i].msg_in), nl_idx));
+						nl_idx = get_nl_index(clients[i].msg_in);
+					}
 				}
 			}			
 		}
@@ -146,86 +181,85 @@ void update_max_fd(int *max_fd, int fd)
 		*max_fd = fd;
 }
 
-/*
-// verificar se a ligacao fecha
 void receive_msg(t_client *client, int fd)
 {
-	const int buff_size = 2;
-	char buff_read[buff_size];
-	char *buff; 
-	int read_bytes;
-	int total_size;
+	const int buff_size = 1000;
+	char buff_read[buff_size + 1];
+	int n_read;
 
-	read_bytes = recv(fd, buff_read, buff_size-1, 0);
-	buff_read[read_bytes] = '\0';
-	total_size = str_len(client->msg_in) + read_bytes + 1;
-
-	printf("client->msg_in: %s\n", client->msg_in);
-	printf("total size: %i\n", total_size);
-
-	buff = malloc(total_size);
-
-	if (client->msg_in)
-	{
-		strcat(buff, client->msg_in);
-		free(client->msg_in);
-	}
-	strcat(buff, buff_read);
-	buff[total_size] = '\0';
-	client->msg_in = buff;
+	n_read = recv(fd, buff_read, buff_size, 0);
+	if (n_read <= 0)
+		exit(1); // neste caso tem simplesmente de fechar o cliente
+	buff_read[n_read] = '\0';
+	client->msg_in = str_join(client->msg_in, buff_read);
 }
 
-int str_len(char *str)
+void prepare_messages(t_client *client, char msgs)
 {
-	if (!str)
-		return (0);
-	return (strlen(str));
+
+}
+
+char *str_cut(char **buff, int idx)
+{
+	char *new_str;
+	char *new_buff;
+	int	 new_buff_size;
+
+	if (idx < 0 || !(*buff))
+		return (NULL);
+
+	new_str = calloc(idx + 1, sizeof(char));
+	for (int i=0; i <= idx; i++)
+		new_str[i] = (*buff)[i];
+
+	new_buff_size = strlen(*buff)-idx;
+	if (new_buff_size < 2)
+	{
+		free(*buff);
+		*buff = 0;
+	}
+	else
+	{
+		new_buff = calloc(new_buff_size, sizeof(char));
+		for(int i=0; i < new_buff_size; i++)
+			new_buff[i] = (*buff)[i];
+		free(*buff);
+		*buff = new_buff;
+	}
+	return (new_str);
+}
+
+
+//buff no final é mudificado removendo a menssagem
+//cria novo array com a menssagem
+/*char *get_msg(char **buff)
+{
+	char *msg = 0;
+	int nl;
+
+	nl = get_nl_index(*buff);
+	if (nl < 0)
+		return (NULL);
+	
+	if (nl == 0)
+	{
+		//msg = calloc(2, 
+	}
+	return (msg);
 }
 */
 
-int extract_message(char **buf, char **msg)
+int get_nl_index(char *str)
 {
-	char	*newbuf;
-	int	i;
+	int i = 0;
 
-	*msg = 0;
-	if (*buf == 0)
-		return (0);
-	i = 0;
-	while ((*buf)[i])
+	if (!str)
+		return (-1);
+	while (str[i])
 	{
-		if ((*buf)[i] == '\n')
-		{
-			newbuf = calloc(1, sizeof(*newbuf) * (strlen(*buf + i + 1) + 1));
-			if (newbuf == 0)
-				return (-1);
-			strcpy(newbuf, *buf + i + 1);
-			*msg = *buf;
-			(*msg)[i + 1] = 0;
-			*buf = newbuf;
-			return (1);
-		}
+		if (str[i] == '\n')
+			return (i);
 		i++;
 	}
-	return (0);
-}
-
-char *str_join(char *buf, char *add)
-{
-	char	*newbuf;
-	int		len;
-
-	if (buf == 0)
-		len = 0;
-	else
-		len = strlen(buf);
-	newbuf = malloc(sizeof(*newbuf) * (len + strlen(add) + 1));
-	if (newbuf == 0)
-		return (0);
-	newbuf[0] = 0;
-	if (buf != 0)
-		strcat(newbuf, buf);
-	free(buf);
-	strcat(newbuf, add);
-	return (newbuf);
+	return (-1);
 }
