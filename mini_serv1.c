@@ -5,8 +5,6 @@
 #include <sys/select.h>
 #include <string.h>
 #include <strings.h>
-
-
 #include <stdio.h>
 
 typedef struct s_client
@@ -25,8 +23,8 @@ void send_msg(t_client *client);
 int get_nl_index(char *str);
 char *str_cut(char **buff, int idx);
 int add_new_client(t_client *clients, int server_fd);
-
 void update_all_msg_out(t_client *clients, char *msg, int max_fd);
+void prepare_client_message(t_client *client, char **buff, char *msg);
 
 char *str_join(char *buf, char *add)
 {
@@ -78,7 +76,6 @@ int main(int argc, char **argv)
 
 		if (msg_buff)
 		{
-			//printf("->%s", msg_buff);
 			update_all_msg_out(clients, msg_buff, max_fd);
 			free(msg_buff);
 			msg_buff = 0;
@@ -102,7 +99,7 @@ int main(int argc, char **argv)
 					nl_idx = get_nl_index(clients[i].msg_in);
 					while (nl_idx > -1)
 					{
-						msg_buff = str_join(msg_buff, str_cut(&(clients[i].msg_in), nl_idx));
+						prepare_client_message(&(clients[i]), &msg_buff, str_cut(&(clients[i].msg_in), nl_idx));	
 						nl_idx = get_nl_index(clients[i].msg_in);
 					}
 				}
@@ -271,4 +268,13 @@ void update_all_msg_out(t_client *clients, char *msg, int max_fd)
 		if (clients[i].fd > 0)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}
+}
+
+void prepare_client_message(t_client *client, char **buff, char *msg)
+{
+	char prefix[50];
+
+	sprintf(prefix, "client %d: ", client->id);
+	*buff = str_join(*buff, prefix);
+	*buff = str_join(*buff, msg);
 }
