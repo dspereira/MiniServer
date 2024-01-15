@@ -19,12 +19,14 @@ typedef struct s_client
 
 void print_error(char *str);
 int get_server_fd(char *port);
-int accept_connection(int server_fd);
-void handle_connection(int fd);
 void update_max_fd(int *max_fd, int fd);
 void receive_msg(t_client *client, int fd);
+void send_msg(t_client *client);
 int get_nl_index(char *str);
 char *str_cut(char **buff, int idx);
+int add_new_client(t_client *clients, int server_fd);
+
+void update_all_msg_out(t_client *clients, char *msg, int max_fd);
 
 char *str_join(char *buf, char *add)
 {
@@ -51,7 +53,6 @@ int main(int argc, char **argv)
 	t_client clients[65536];
 	fd_set current_sockets, r_sockets, w_sockets;
 	int server_fd, client_fd;
-	int id = 0;
 	int max_fd = 0;
 	char *msg_send = 0;
 	int nl_idx;
@@ -74,12 +75,12 @@ int main(int argc, char **argv)
 		r_sockets =  w_sockets = current_sockets;
 		if (select(max_fd+1, &r_sockets, &w_sockets, NULL, NULL) < 0)
 			print_error("Fatal error\n");
-		
 
-		// aqui precisa de fazer update do msg_out.
 		if (msg_buff)
 		{
-			printf("->%s", msg_buff);
+			//printf("->%s", msg_buff);
+			update_all_msg_out(clients, msg_buff, max_fd);
+			free(msg_buff);
 			msg_buff = 0;
 		}
 
@@ -89,7 +90,7 @@ int main(int argc, char **argv)
 			{
 				if (i == server_fd)
 				{
-					client_fd = accept_connection(server_fd);
+					client_fd = add_new_client(clients, server_fd);
 					if (client_fd < 0)
 						print_error("Fatal error\n");
 					update_max_fd(&max_fd, client_fd);
@@ -105,7 +106,9 @@ int main(int argc, char **argv)
 						nl_idx = get_nl_index(clients[i].msg_in);
 					}
 				}
-			}			
+			}
+			if (FD_ISSET(i, &w_sockets))
+				send_msg(&clients[i]);
 		}
 	}
 	return (0);
@@ -150,31 +153,6 @@ int get_server_fd(char *port)
 	return (server_fd);
 }
 
-int accept_connection(int server_fd)
-{
-	struct sockaddr_in cli; 
-	int len;
-	int client_fd;
-
-	len = sizeof(cli);
-	client_fd = accept(server_fd, (struct sockaddr *)&cli, &len);
-
-	return (client_fd);
-}
-
-void handle_connection(int fd)
-{
-	char buffer[2];
-	int n_read;
-
-	n_read = read(fd, buffer, 1);
-	buffer[n_read] = '\0';
-
-	printf("%s", buffer);
-
-	write(fd, "resposta\n", 9);
-}
-
 void update_max_fd(int *max_fd, int fd)
 {
 	if (fd > *max_fd)
@@ -194,9 +172,24 @@ void receive_msg(t_client *client, int fd)
 	client->msg_in = str_join(client->msg_in, buff_read);
 }
 
-void prepare_messages(t_client *client, char msgs)
+void send_msg(t_client *client)
 {
+	int n_send;
+	int msg_len;
 
+	if (!client->msg_out)
+		return ;
+	msg_len = strlen(client->msg_out);
+	n_send = send(client->fd, client->msg_out, msg_len, 0);
+
+	if (msg_len == n_send)
+	{
+		free(client->msg_out);
+		client->msg_out = 0;
+		return ;
+	}
+	if (n_send > 0)
+		client->msg_out = str_cut(&(client->msg_out), n_send);
 }
 
 char *str_cut(char **buff, int idx)
@@ -229,26 +222,6 @@ char *str_cut(char **buff, int idx)
 	return (new_str);
 }
 
-
-//buff no final é mudificado removendo a menssagem
-//cria novo array com a menssagem
-/*char *get_msg(char **buff)
-{
-	char *msg = 0;
-	int nl;
-
-	nl = get_nl_index(*buff);
-	if (nl < 0)
-		return (NULL);
-	
-	if (nl == 0)
-	{
-		//msg = calloc(2, 
-	}
-	return (msg);
-}
-*/
-
 int get_nl_index(char *str)
 {
 	int i = 0;
@@ -262,4 +235,40 @@ int get_nl_index(char *str)
 		i++;
 	}
 	return (-1);
+}
+
+int add_new_client(t_client *clients, int server_fd)
+{
+	static int id = 0;
+	struct sockaddr_in cli; 
+	int len;
+	int fd;
+
+	len = sizeof(cli);
+	fd = accept(server_fd, (struct sockaddr *)&cli, &len);
+	if (fd < 0)
+		return (-1);
+
+	clients[fd].fd = fd;
+	clients[fd].id = id;
+	clients[fd].msg_in = 0;
+	clients[fd].msg_out = 0;
+	id++;
+	return (fd);
+}
+
+void remove_client(void)
+{
+
+}
+
+void update_all_msg_out(t_client *clients, char *msg, int max_fd)
+{
+	if (!msg)
+		return ;
+	for (int i=0; i <= max_fd; i++)
+	{
+		if (clients[i].fd > 0)
+			clients[i].msg_out = str_join(clients[i].msg_out, msg);
+	}
 }
