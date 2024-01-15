@@ -24,9 +24,13 @@ int get_nl_index(char *str);
 char *str_cut(char **buff, int idx);
 int add_new_client(t_client *clients, int server_fd);
 void remove_client(t_client *client);
-void update_all_msg_out(t_client *clients, char *msg, int max_fd);
-void prepare_client_message(t_client *client, char **buff, char *msg);
-void prepare_server_message(t_client *client, char **buff, int state);
+//void update_all_msg_out(t_client *clients, char *msg, int max_fd);
+//void update_all_msg_out_1(t_client *clients, char *msg, int max_fd, int client_fd);
+//void prepare_client_message(t_client *client, char **buff, char *msg);
+//void prepare_server_message(t_client *client, char **buff, int state);
+
+void update_client_msg(t_client *clients, char *msg, int max_fd, int fd);
+void update_server_msg(t_client *clients, int max_fd, int fd, int state);
 
 char *str_join(char *buf, char *add)
 {
@@ -76,12 +80,12 @@ int main(int argc, char **argv)
 		if (select(max_fd+1, &r_sockets, &w_sockets, NULL, NULL) < 0)
 			print_error("Fatal error\n");
 
-		if (msg_buff)
+		/*if (msg_buff)
 		{
 			update_all_msg_out(clients, msg_buff, max_fd);
 			free(msg_buff);
 			msg_buff = 0;
-		}
+		}*/
 
 		for (int i=0; i < max_fd+1; i++)
 		{
@@ -94,20 +98,30 @@ int main(int argc, char **argv)
 						print_error("Fatal error\n");
 					update_max_fd(&max_fd, client_fd);
 					FD_SET(client_fd, &current_sockets);
-					prepare_server_message(&clients[client_fd], &msg_buff, 0);
+					update_server_msg(clients, max_fd, client_fd, 0);
+					//prepare_server_message(&clients[client_fd], &msg_buff, 0);
 				}
 				else
 				{
 					if (receive_msg(&clients[i]) < 0)
 					{
-						prepare_server_message(&clients[i], &msg_buff, 1);
+						//prepare_server_message(&clients[i], &msg_buff, 1);
+						update_server_msg(clients, max_fd, i, 1);
 						remove_client(&clients[i]);
 						FD_CLR(i, &current_sockets);
 					}
-					nl_idx = get_nl_index(clients[i].msg_in);
+					/*nl_idx = get_nl_index(clients[i].msg_in);
 					while (nl_idx > -1)
 					{
 						prepare_client_message(&(clients[i]), &msg_buff, str_cut(&(clients[i].msg_in), nl_idx));	
+						nl_idx = get_nl_index(clients[i].msg_in);
+					}*/
+					nl_idx = get_nl_index(clients[i].msg_in);
+					while (nl_idx > -1)
+					{
+
+						//update_all_msg_out_1(&(clients[i]))
+						update_client_msg(clients, str_cut(&(clients[i].msg_in), nl_idx), max_fd, i);
 						nl_idx = get_nl_index(clients[i].msg_in);
 					}
 				}
@@ -178,6 +192,7 @@ int receive_msg(t_client *client)
 	return (n_read);
 }
 
+
 void send_msg(t_client *client)
 {
 	int n_send;
@@ -197,6 +212,8 @@ void send_msg(t_client *client)
 	if (n_send > 0)
 		client->msg_out = str_cut(&(client->msg_out), n_send);
 }
+
+
 
 char *str_cut(char **buff, int idx)
 {
@@ -276,6 +293,7 @@ void remove_client(t_client *client)
 	client->msg_out = 0;
 }
 
+/*
 void update_all_msg_out(t_client *clients, char *msg, int max_fd)
 {
 	if (!msg)
@@ -286,7 +304,59 @@ void update_all_msg_out(t_client *clients, char *msg, int max_fd)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}
 }
+*/
 
+/*
+void update_all_msg_out(t_client *clients, char *msg, int max_fd, int id)
+{
+	if (!msg)
+		return ;
+	
+	for (int i=0; i <= max_fd; i++)
+	{
+		if (clients[i].fd > 0 && clients[i].id != id)
+			clients[i].msg_out = str_join(clients[i].msg_out, msg);
+	}
+}
+*/
+
+void update_client_msg(t_client *clients, char *msg, int max_fd, int fd)
+{
+	char prefix[50];
+
+	if (!msg)
+		return ;
+
+	sprintf(prefix, "client %d: ", clients[fd].id);
+
+	for (int i=0; i <= max_fd; i++)
+	{
+		if (clients[i].fd > 0 && clients[i].fd != fd)
+		{
+			clients[i].msg_out = str_join(clients[i].msg_out, prefix);
+			clients[i].msg_out = str_join(clients[i].msg_out, msg);
+		}
+	}
+}
+
+
+void update_server_msg(t_client *clients, int max_fd, int fd, int state)
+{
+	char msg[50];
+
+	if (state == 0)
+		sprintf(msg, "server: client %d just arrived\n", clients[fd].id);
+	else
+		sprintf(msg, "server: client %d just left\n", clients[fd].id);
+
+	for (int i=0; i <= max_fd; i++)
+	{
+		if (clients[i].fd > 0 && clients[i].fd != fd)
+			clients[i].msg_out = str_join(clients[i].msg_out, msg);
+	}	
+}
+
+/*
 void prepare_client_message(t_client *client, char **buff, char *msg)
 {
 	char prefix[50];
@@ -295,7 +365,9 @@ void prepare_client_message(t_client *client, char **buff, char *msg)
 	*buff = str_join(*buff, prefix);
 	*buff = str_join(*buff, msg);
 }
+*/
 
+/*
 void prepare_server_message(t_client *client, char **buff, int state)
 {
 	char msg[50];
@@ -306,3 +378,4 @@ void prepare_server_message(t_client *client, char **buff, int state)
 		sprintf(msg, "server: client %d just left\n", client->id);
 	*buff = str_join(*buff, msg);
 }
+*/
