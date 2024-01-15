@@ -18,13 +18,15 @@ typedef struct s_client
 void print_error(char *str);
 int get_server_fd(char *port);
 void update_max_fd(int *max_fd, int fd);
-void receive_msg(t_client *client, int fd);
+int receive_msg(t_client *client);
 void send_msg(t_client *client);
 int get_nl_index(char *str);
 char *str_cut(char **buff, int idx);
 int add_new_client(t_client *clients, int server_fd);
+void remove_client(t_client *client);
 void update_all_msg_out(t_client *clients, char *msg, int max_fd);
 void prepare_client_message(t_client *client, char **buff, char *msg);
+void prepare_server_message(t_client *client, char **buff, int state);
 
 char *str_join(char *buf, char *add)
 {
@@ -92,10 +94,16 @@ int main(int argc, char **argv)
 						print_error("Fatal error\n");
 					update_max_fd(&max_fd, client_fd);
 					FD_SET(client_fd, &current_sockets);
+					prepare_server_message(&clients[client_fd], &msg_buff, 0);
 				}
 				else
 				{
-					receive_msg(&clients[i], i);
+					if (receive_msg(&clients[i]) < 0)
+					{
+						prepare_server_message(&clients[i], &msg_buff, 1);
+						remove_client(&clients[i]);
+						FD_CLR(i, &current_sockets);
+					}
 					nl_idx = get_nl_index(clients[i].msg_in);
 					while (nl_idx > -1)
 					{
@@ -156,17 +164,18 @@ void update_max_fd(int *max_fd, int fd)
 		*max_fd = fd;
 }
 
-void receive_msg(t_client *client, int fd)
+int receive_msg(t_client *client)
 {
 	const int buff_size = 1000;
 	char buff_read[buff_size + 1];
 	int n_read;
 
-	n_read = recv(fd, buff_read, buff_size, 0);
+	n_read = recv(client->fd, buff_read, buff_size, 0);
 	if (n_read <= 0)
-		exit(1); // neste caso tem simplesmente de fechar o cliente
+		return (-1);
 	buff_read[n_read] = '\0';
 	client->msg_in = str_join(client->msg_in, buff_read);
+	return (n_read);
 }
 
 void send_msg(t_client *client)
@@ -254,9 +263,17 @@ int add_new_client(t_client *clients, int server_fd)
 	return (fd);
 }
 
-void remove_client(void)
+void remove_client(t_client *client)
 {
-
+	close(client->fd);
+	client->fd = 0;
+	client->id = 0;
+	if (client->msg_in)
+		free(client->msg_in);
+	if (client->msg_out)
+		free(client->msg_out);
+	client->msg_in = 0;
+	client->msg_out = 0;
 }
 
 void update_all_msg_out(t_client *clients, char *msg, int max_fd)
@@ -276,5 +293,16 @@ void prepare_client_message(t_client *client, char **buff, char *msg)
 
 	sprintf(prefix, "client %d: ", client->id);
 	*buff = str_join(*buff, prefix);
+	*buff = str_join(*buff, msg);
+}
+
+void prepare_server_message(t_client *client, char **buff, int state)
+{
+	char msg[50];
+
+	if (state == 0)
+		sprintf(msg, "server: client %d just arrived\n", client->id);
+	else
+		sprintf(msg, "server: client %d just left\n", client->id);
 	*buff = str_join(*buff, msg);
 }
