@@ -27,6 +27,7 @@ int add_new_client(t_client *clients, int server_fd);
 void remove_client(t_client *client);
 void update_client_msg(t_client *clients, char *msg, int max_fd, int fd);
 void update_server_msg(t_client *clients, int max_fd, int fd, int state);
+void write_client_id_info(t_client *clients);
 void	*oom_guard(void *p);
 
 
@@ -299,11 +300,21 @@ void update_server_msg(t_client *clients, int max_fd, int fd, int state)
 		sprintf(msg, "server: client %d just arrived\n", clients[fd].id);
 	else
 		sprintf(msg, "server: client %d just left\n", clients[fd].id);
+	write_client_id_info(&clients[fd]);
 	for (int i=0; i <= max_fd; i++)
 	{
 		if (clients[i].fd > 0 && clients[i].fd != fd)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}	
+}
+
+void write_client_id_info(t_client *client)
+{
+	char msg[200];
+
+	bzero(msg, 200);
+	sprintf(msg, "----------------\n|   CLIENT %d   |\n----------------\n", client->id);
+	client->msg_out = str_join(client->msg_out, msg);
 }
 
 void	*oom_guard(void *p)
