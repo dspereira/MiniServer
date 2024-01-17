@@ -7,8 +7,6 @@
 #include <strings.h>
 #include <stdio.h>
 
-//echo -e "Et voici un texte avec plusieurs\nretours\na\nla\nligne\n" | nc 127.0.0.1 8080
-
 typedef struct s_client
 {
 	int id;
@@ -22,33 +20,15 @@ int get_server_fd(char *port);
 void update_max_fd(int *max_fd, int fd);
 int receive_msg(t_client *client);
 void send_msg(t_client *client);
-int get_nl_index(char *str);
+char *str_join(char *buf, char *add);
 char *str_cut(char **buff, int idx);
+int get_nl_index(char *str);
 int add_new_client(t_client *clients, int server_fd);
 void remove_client(t_client *client);
-
 void update_client_msg(t_client *clients, char *msg, int max_fd, int fd);
 void update_server_msg(t_client *clients, int max_fd, int fd, int state);
+void	*oom_guard(void *p);
 
-char *str_join(char *buf, char *add)
-{
-	char	*newbuf;
-	int		len;
-
-	if (buf == 0)
-		len = 0;
-	else
-		len = strlen(buf);
-	newbuf = malloc(sizeof(*newbuf) * (len + strlen(add) + 1));
-	if (newbuf == 0)
-		return (0);
-	newbuf[0] = 0;
-	if (buf != 0)
-		strcat(newbuf, buf);
-	free(buf);
-	strcat(newbuf, add);
-	return (newbuf);
-}
 
 int main(int argc, char **argv)
 {
@@ -60,11 +40,9 @@ int main(int argc, char **argv)
 
 	if (argc != 2)
 		print_error("Wrong number of arguments\n");
-
 	server_fd = get_server_fd(argv[1]);
 	if (server_fd < 0)
 		print_error("Fatal error\n");
-
 	update_max_fd(&max_fd, server_fd);
 	bzero(clients, sizeof(clients));
 	FD_ZERO(&current_sockets);
@@ -134,18 +112,15 @@ int get_server_fd(char *port)
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server_fd < 0)
 		return (-1);
-	
 	bzero(&address, sizeof(address));
 	address.sin_family = AF_INET; 
 	address.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
 	address.sin_port = htons(atoi(port));
-
 	if (bind(server_fd, (const struct sockaddr *) &address, sizeof(address)) < 0)
 	{
 		close(server_fd);
 		return (-1);
 	}
-	
 	if (listen(server_fd, 128) < 0)
 	{
 		close(server_fd);
@@ -160,7 +135,6 @@ void update_max_fd(int *max_fd, int fd)
 		*max_fd = fd;
 }
 
-//"Et voici un texte avec plusieurs\nretours\na\nla\nligne\n"
 int receive_msg(t_client *client)
 {
 	const int buff_size = 100000;
@@ -168,10 +142,8 @@ int receive_msg(t_client *client)
 	int n_read;
 
 	n_read = recv(client->fd, buff_read, buff_size, 0);
-	
 	if (n_read <= 0)
 		return (-1);
-
 	buff_read[n_read] = '\0';
 	client->msg_in = str_join(client->msg_in, buff_read);
 	return (n_read);
@@ -197,6 +169,26 @@ void send_msg(t_client *client)
 		client->msg_out = str_cut(&(client->msg_out), n_send);
 }
 
+char *str_join(char *buf, char *add)
+{
+	char	*newbuf;
+	int		len;
+
+	if (buf == 0)
+		len = 0;
+	else
+		len = strlen(buf);
+	newbuf = oom_guard(malloc(sizeof(*newbuf) * (len + strlen(add) + 1)));
+	if (newbuf == 0)
+		return (0);
+	newbuf[0] = 0;
+	if (buf != 0)
+		strcat(newbuf, buf);
+	free(buf);
+	strcat(newbuf, add);
+	return (newbuf);
+}
+
 char *str_cut(char **buff, int idx)
 {
 	char	*new_str;
@@ -206,25 +198,20 @@ char *str_cut(char **buff, int idx)
 
 	if (idx < 0 || !(*buff))
 		return (NULL);
-
 	if (idx == 0)
-		new_str = calloc(2, sizeof(char));
+		new_str = oom_guard(calloc(2, sizeof(char)));
 	else
-		new_str = calloc(idx + 2, sizeof(char));
-
+		new_str = oom_guard(calloc(idx + 2, sizeof(char)));
 	for (int i=0; i <= idx; i++)
 		new_str[i] = (*buff)[i];
-
 	buff_len = strlen(*buff);
-
 	if(buff_len == idx + 1)
 	{
 		free(*buff);
 		*buff = NULL;
 		return (new_str);
 	}
-
-	new_buff = calloc((strlen(*buff) - idx) + 1, sizeof(char));
+	new_buff = oom_guard(calloc((strlen(*buff) - idx) + 1, sizeof(char)));
 	idx++;
 	idx2 = 0;
 	while ((*buff)[idx])
@@ -235,7 +222,6 @@ char *str_cut(char **buff, int idx)
 	}
 	free(*buff);
 	*buff = new_buff;
-
 	return (new_str);
 }
 
@@ -265,7 +251,6 @@ int add_new_client(t_client *clients, int server_fd)
 	fd = accept(server_fd, (struct sockaddr *)&cli, &len);
 	if (fd < 0)
 		return (-1);
-
 	clients[fd].fd = fd;
 	clients[fd].id = id;
 	clients[fd].msg_in = 0;
@@ -319,4 +304,14 @@ void update_server_msg(t_client *clients, int max_fd, int fd, int state)
 		if (clients[i].fd > 0 && clients[i].fd != fd)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}	
+}
+
+void	*oom_guard(void *p)
+{
+	if (!p)
+	{
+		write(2, "Fatal error\n", strlen("Fatal error\n"));
+		exit(1);
+	}
+	return (p);
 }
