@@ -33,8 +33,4 @@ You can test the server by using the nc command (netcat) as a client for communi
 
 ## License
 
-This project is licensed under the [MIT License]().
-
-## Contact
-
-If you have any questions or comments about this project, please feel free to contact me at diogo.s.pereira@outlook.pt.
+This project is licensed under the [MIT License](https://github.com/dspereira/MiniServer/blob/main/LICENSE).
