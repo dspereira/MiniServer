@@ -25,6 +25,16 @@ Usage example:
 ./mini_server 8080
 ```
 
-## Examples
+## Example
 
 You can test the server by using the nc command (netcat) as a client for communication.
+
+![Example](https://github.com/dspereira/MiniServer/blob/main/mini_server_ex.png)
+
+## License
+
+This project is licensed under the [MIT License]().
+
+## Contact
+
+If you have any questions or comments about this project, please feel free to contact me at diogo.s.pereira@outlook.pt.
