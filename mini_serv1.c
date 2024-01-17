@@ -7,6 +7,8 @@
 #include <strings.h>
 #include <stdio.h>
 
+//echo -e "Et voici un texte avec plusieurs\nretours\na\nla\nligne\n" | nc 127.0.0.1 8080
+
 typedef struct s_client
 {
 	int id;
@@ -24,10 +26,6 @@ int get_nl_index(char *str);
 char *str_cut(char **buff, int idx);
 int add_new_client(t_client *clients, int server_fd);
 void remove_client(t_client *client);
-//void update_all_msg_out(t_client *clients, char *msg, int max_fd);
-//void update_all_msg_out_1(t_client *clients, char *msg, int max_fd, int client_fd);
-//void prepare_client_message(t_client *client, char **buff, char *msg);
-//void prepare_server_message(t_client *client, char **buff, int state);
 
 void update_client_msg(t_client *clients, char *msg, int max_fd, int fd);
 void update_server_msg(t_client *clients, int max_fd, int fd, int state);
@@ -58,9 +56,7 @@ int main(int argc, char **argv)
 	fd_set current_sockets, r_sockets, w_sockets;
 	int server_fd, client_fd;
 	int max_fd = 0;
-	char *msg_send = 0;
 	int nl_idx;
-	char *msg_buff = 0;
 
 	if (argc != 2)
 		print_error("Wrong number of arguments\n");
@@ -80,14 +76,7 @@ int main(int argc, char **argv)
 		if (select(max_fd+1, &r_sockets, &w_sockets, NULL, NULL) < 0)
 			print_error("Fatal error\n");
 
-		/*if (msg_buff)
-		{
-			update_all_msg_out(clients, msg_buff, max_fd);
-			free(msg_buff);
-			msg_buff = 0;
-		}*/
-
-		for (int i=0; i < max_fd+1; i++)
+		for (int i=0; i <= max_fd; i++)
 		{
 			if (FD_ISSET(i, &r_sockets))
 			{
@@ -99,31 +88,24 @@ int main(int argc, char **argv)
 					update_max_fd(&max_fd, client_fd);
 					FD_SET(client_fd, &current_sockets);
 					update_server_msg(clients, max_fd, client_fd, 0);
-					//prepare_server_message(&clients[client_fd], &msg_buff, 0);
 				}
 				else
 				{
 					if (receive_msg(&clients[i]) < 0)
 					{
-						//prepare_server_message(&clients[i], &msg_buff, 1);
 						update_server_msg(clients, max_fd, i, 1);
 						remove_client(&clients[i]);
 						FD_CLR(i, &current_sockets);
 					}
-					/*nl_idx = get_nl_index(clients[i].msg_in);
-					while (nl_idx > -1)
-					{
-						prepare_client_message(&(clients[i]), &msg_buff, str_cut(&(clients[i].msg_in), nl_idx));	
-						nl_idx = get_nl_index(clients[i].msg_in);
-					}*/
-					nl_idx = get_nl_index(clients[i].msg_in);
-					while (nl_idx > -1)
-					{
-
-						//update_all_msg_out_1(&(clients[i]))
-						update_client_msg(clients, str_cut(&(clients[i].msg_in), nl_idx), max_fd, i);
-						nl_idx = get_nl_index(clients[i].msg_in);
-					}
+                    else
+                    {
+                        nl_idx = get_nl_index(clients[i].msg_in);
+                        while (nl_idx > -1)
+                        {
+                            update_client_msg(clients, str_cut(&(clients[i].msg_in), nl_idx), max_fd, i);
+                            nl_idx = get_nl_index(clients[i].msg_in);
+                        }
+                    }
 				}
 			}
 			if (FD_ISSET(i, &w_sockets))
@@ -178,20 +160,22 @@ void update_max_fd(int *max_fd, int fd)
 		*max_fd = fd;
 }
 
+//"Et voici un texte avec plusieurs\nretours\na\nla\nligne\n"
 int receive_msg(t_client *client)
 {
-	const int buff_size = 1000;
+	const int buff_size = 100000;
 	char buff_read[buff_size + 1];
 	int n_read;
 
 	n_read = recv(client->fd, buff_read, buff_size, 0);
+	
 	if (n_read <= 0)
 		return (-1);
+
 	buff_read[n_read] = '\0';
 	client->msg_in = str_join(client->msg_in, buff_read);
 	return (n_read);
 }
-
 
 void send_msg(t_client *client)
 {
@@ -213,35 +197,45 @@ void send_msg(t_client *client)
 		client->msg_out = str_cut(&(client->msg_out), n_send);
 }
 
-
-
 char *str_cut(char **buff, int idx)
 {
-	char *new_str;
-	char *new_buff;
-	int	 new_buff_size;
+	char	*new_str;
+	char	*new_buff;
+	int		buff_len;
+	int		idx2;
 
 	if (idx < 0 || !(*buff))
 		return (NULL);
 
-	new_str = calloc(idx + 1, sizeof(char));
+	if (idx == 0)
+		new_str = calloc(2, sizeof(char));
+	else
+		new_str = calloc(idx + 2, sizeof(char));
+
 	for (int i=0; i <= idx; i++)
 		new_str[i] = (*buff)[i];
 
-	new_buff_size = strlen(*buff)-idx;
-	if (new_buff_size < 2)
+	buff_len = strlen(*buff);
+
+	if(buff_len == idx + 1)
 	{
 		free(*buff);
-		*buff = 0;
+		*buff = NULL;
+		return (new_str);
 	}
-	else
+
+	new_buff = calloc((strlen(*buff) - idx) + 1, sizeof(char));
+	idx++;
+	idx2 = 0;
+	while ((*buff)[idx])
 	{
-		new_buff = calloc(new_buff_size, sizeof(char));
-		for(int i=0; i < new_buff_size; i++)
-			new_buff[i] = (*buff)[i];
-		free(*buff);
-		*buff = new_buff;
+		new_buff[idx2] = (*buff)[idx];
+		idx++;
+		idx2++;
 	}
+	free(*buff);
+	*buff = new_buff;
+
 	return (new_str);
 }
 
@@ -254,7 +248,7 @@ int get_nl_index(char *str)
 	while (str[i])
 	{
 		if (str[i] == '\n')
-			return (i);
+        	return (i);
 		i++;
 	}
 	return (-1);
@@ -264,10 +258,10 @@ int add_new_client(t_client *clients, int server_fd)
 {
 	static int id = 0;
 	struct sockaddr_in cli; 
-	int len;
+	socklen_t len;
 	int fd;
 
-	len = sizeof(cli);
+	len = (socklen_t)sizeof(cli);
 	fd = accept(server_fd, (struct sockaddr *)&cli, &len);
 	if (fd < 0)
 		return (-1);
@@ -293,42 +287,14 @@ void remove_client(t_client *client)
 	client->msg_out = 0;
 }
 
-/*
-void update_all_msg_out(t_client *clients, char *msg, int max_fd)
-{
-	if (!msg)
-		return ;
-	for (int i=0; i <= max_fd; i++)
-	{
-		if (clients[i].fd > 0)
-			clients[i].msg_out = str_join(clients[i].msg_out, msg);
-	}
-}
-*/
-
-/*
-void update_all_msg_out(t_client *clients, char *msg, int max_fd, int id)
-{
-	if (!msg)
-		return ;
-	
-	for (int i=0; i <= max_fd; i++)
-	{
-		if (clients[i].fd > 0 && clients[i].id != id)
-			clients[i].msg_out = str_join(clients[i].msg_out, msg);
-	}
-}
-*/
-
 void update_client_msg(t_client *clients, char *msg, int max_fd, int fd)
 {
 	char prefix[50];
 
 	if (!msg)
 		return ;
-
+    bzero(prefix, 50);
 	sprintf(prefix, "client %d: ", clients[fd].id);
-
 	for (int i=0; i <= max_fd; i++)
 	{
 		if (clients[i].fd > 0 && clients[i].fd != fd)
@@ -339,43 +305,18 @@ void update_client_msg(t_client *clients, char *msg, int max_fd, int fd)
 	}
 }
 
-
 void update_server_msg(t_client *clients, int max_fd, int fd, int state)
 {
 	char msg[50];
 
+    bzero(msg, 50);
 	if (state == 0)
 		sprintf(msg, "server: client %d just arrived\n", clients[fd].id);
 	else
 		sprintf(msg, "server: client %d just left\n", clients[fd].id);
-
 	for (int i=0; i <= max_fd; i++)
 	{
 		if (clients[i].fd > 0 && clients[i].fd != fd)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}	
 }
-
-/*
-void prepare_client_message(t_client *client, char **buff, char *msg)
-{
-	char prefix[50];
-
-	sprintf(prefix, "client %d: ", client->id);
-	*buff = str_join(*buff, prefix);
-	*buff = str_join(*buff, msg);
-}
-*/
-
-/*
-void prepare_server_message(t_client *client, char **buff, int state)
-{
-	char msg[50];
-
-	if (state == 0)
-		sprintf(msg, "server: client %d just arrived\n", client->id);
-	else
-		sprintf(msg, "server: client %d just left\n", client->id);
-	*buff = str_join(*buff, msg);
-}
-*/
