@@ -2,9 +2,6 @@
 
 This project is a simple C server designed to broadcast messages among multiple clients in localhost. It was created with the purpose of studying and gaining practical experience with the select() system call function in C and socket communications.
 
-This program receives the 
-
-
 ## Installation / Usage
 
 This project is designed to work on Linux and macOS. The server works on localhost (ip 127.0.0.1) and port defined by the user.
