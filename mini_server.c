@@ -22,11 +22,13 @@ int receive_msg(t_client *client);
 void send_msg(t_client *client);
 char *str_join(char *buf, char *add);
 char *str_cut(char **buff, int idx);
+void str_cut2(char **buff, int idx);
 int get_nl_index(char *str);
 int add_new_client(t_client *clients, int server_fd);
 void remove_client(t_client *client);
 void update_client_msg(t_client *clients, char *msg, int max_fd, int fd);
 void update_server_msg(t_client *clients, int max_fd, int fd, int state);
+void prepare_msg_to_send(t_client *clients, int max_fd, int fd);
 void write_client_id_info(t_client *clients);
 void	*oom_guard(void *p);
 
@@ -77,14 +79,7 @@ int main(int argc, char **argv)
 						FD_CLR(i, &current_sockets);
 					}
                     else
-                    {
-                        nl_idx = get_nl_index(clients[i].msg_in);
-                        while (nl_idx > -1)
-                        {
-                            update_client_msg(clients, str_cut(&(clients[i].msg_in), nl_idx), max_fd, i);
-                            nl_idx = get_nl_index(clients[i].msg_in);
-                        }
-                    }
+						prepare_msg_to_send(clients, max_fd, i);
 				}
 			}
 			if (FD_ISSET(i, &w_sockets))
@@ -154,6 +149,7 @@ void send_msg(t_client *client)
 {
 	int n_send;
 	int msg_len;
+	char *msg;
 
 	if (!client->msg_out)
 		return ;
@@ -167,7 +163,7 @@ void send_msg(t_client *client)
 		return ;
 	}
 	if (n_send > 0)
-		client->msg_out = str_cut(&(client->msg_out), n_send);
+		str_cut2(&(client->msg_out), n_send);
 }
 
 char *str_join(char *buf, char *add)
@@ -192,38 +188,67 @@ char *str_join(char *buf, char *add)
 
 char *str_cut(char **buff, int idx)
 {
-	char	*new_str;
-	char	*new_buff;
-	int		buff_len;
-	int		idx2;
+    char *str = 0;
+    char *new_buff = 0;
+    int  buff_len = 0;
+    int idx2 = 0;
 
-	if (idx < 0 || !(*buff))
-		return (NULL);
-	if (idx == 0)
-		new_str = oom_guard(calloc(2, sizeof(char)));
-	else
-		new_str = oom_guard(calloc(idx + 2, sizeof(char)));
-	for (int i=0; i <= idx; i++)
-		new_str[i] = (*buff)[i];
-	buff_len = strlen(*buff);
-	if(buff_len == idx + 1)
-	{
-		free(*buff);
-		*buff = NULL;
-		return (new_str);
-	}
-	new_buff = oom_guard(calloc((strlen(*buff) - idx) + 1, sizeof(char)));
-	idx++;
-	idx2 = 0;
-	while ((*buff)[idx])
-	{
-		new_buff[idx2] = (*buff)[idx];
-		idx++;
-		idx2++;
-	}
-	free(*buff);
-	*buff = new_buff;
-	return (new_str);
+    if (idx < 0 || !(*buff))
+        return (NULL);
+    
+    str = oom_guard(calloc(idx + 2, sizeof(char)));
+    for (int i=0; i <= idx; i++)
+        str[i] = (*buff)[i];
+    
+    buff_len = strlen(*buff);
+    if (buff_len == idx + 1)
+    {
+        free(*buff);
+        *buff = 0;
+    }
+    else
+    {
+        new_buff = oom_guard(calloc((buff_len - idx) + 1, sizeof(char)));
+        idx++;
+        while ((*buff)[idx])
+        {
+            new_buff[idx2] = (*buff)[idx];
+            idx++;
+            idx2++;
+        }
+        free(*buff);
+        *buff = new_buff;
+    }
+    return (str);
+}
+
+void str_cut2(char **buff, int idx)
+{
+    char *new_buff = 0;
+    int  buff_len = 0;
+    int idx2 = 0;
+
+    if (idx < 0 || !(*buff))
+        return ; 
+    buff_len = strlen(*buff);
+    if (buff_len == idx + 1)
+    {
+        free(*buff);
+        *buff = 0;
+    }
+    else
+    {
+        new_buff = oom_guard(calloc((buff_len - idx) + 1, sizeof(char)));
+        idx++;
+        while ((*buff)[idx])
+        {
+            new_buff[idx2] = (*buff)[idx];
+            idx++;
+            idx2++;
+        }
+        free(*buff);
+        *buff = new_buff;
+    }
 }
 
 int get_nl_index(char *str)
@@ -262,13 +287,14 @@ int add_new_client(t_client *clients, int server_fd)
 
 void remove_client(t_client *client)
 {
-	close(client->fd);
-	client->fd = 0;
-	client->id = 0;
+	if (client->fd > 0)
+		close(client->fd);
 	if (client->msg_in)
 		free(client->msg_in);
 	if (client->msg_out)
 		free(client->msg_out);
+	client->fd = 0;
+	client->id = 0;
 	client->msg_in = 0;
 	client->msg_out = 0;
 }
@@ -306,6 +332,24 @@ void update_server_msg(t_client *clients, int max_fd, int fd, int state)
 		if (clients[i].fd > 0 && clients[i].fd != fd)
 			clients[i].msg_out = str_join(clients[i].msg_out, msg);
 	}	
+}
+
+void prepare_msg_to_send(t_client *clients, int max_fd, int fd)
+{
+    int idx;
+    char *msg;
+
+    idx = get_nl_index(clients[fd].msg_in);
+    while (idx >= 0)
+    {
+       msg = str_cut(&(clients[fd].msg_in), idx);
+       if (msg)
+       {
+		   update_client_msg(clients, msg, max_fd, fd);
+           free(msg);
+       }
+       idx = get_nl_index(clients[fd].msg_in); 
+    }
 }
 
 void write_client_id_info(t_client *client)
