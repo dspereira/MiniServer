@@ -39,7 +39,6 @@ int main(int argc, char **argv)
 	fd_set current_sockets, r_sockets, w_sockets;
 	int server_fd, client_fd;
 	int max_fd = 0;
-	int nl_idx;
 
 	if (argc != 2)
 		print_error("Wrong number of arguments\n");
@@ -149,7 +148,6 @@ void send_msg(t_client *client)
 {
 	int n_send;
 	int msg_len;
-	char *msg;
 
 	if (!client->msg_out)
 		return ;
